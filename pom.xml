@@ -64,14 +64,12 @@
     </build>
 
     <dependencies>
-        <!-- HTTP Connector -->
         <dependency>
             <groupId>org.mule.connectors</groupId>
             <artifactId>mule-http-connector</artifactId>
             <version>${http.connector.version}</version>
             <classifier>mule-plugin</classifier>
         </dependency>
-        <!-- MUnit Runner -->
         <dependency>
             <groupId>com.mulesoft.munit</groupId>
             <artifactId>munit-runner</artifactId>
@@ -79,7 +77,6 @@
             <classifier>mule-plugin</classifier>
             <scope>test</scope>
         </dependency>
-        <!-- MUnit Tools -->
         <dependency>
             <groupId>com.mulesoft.munit</groupId>
             <artifactId>munit-tools</artifactId>
