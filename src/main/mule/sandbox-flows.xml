@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <!-- Configuration Properties -->
+    <configuration-properties doc:name="Configuration properties" file="config.yaml" />
+
+    <!-- Shared HTTP Listener Configuration -->
+    <http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config">
+        <http:listener-connection host="0.0.0.0" port="${http.port}" />
+    </http:listener-config>
+
+    <!-- HTTP Request Configuration for external calls -->
+    <http:request-config name="HTTP_Request_config" doc:name="HTTP Request config">
+        <http:request-connection host="httpbin.org" port="443" protocol="HTTPS" />
+    </http:request-config>
+
+    <!-- Flow 1: Health Check Endpoint -->
+    <flow name="healthFlow" doc:name="healthFlow">
+        <http:listener doc:name="GET /health" config-ref="HTTP_Listener_config" path="/health" allowedMethods="GET" />
+        <ee:transform doc:name="Health Response">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status: "UP"
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+
+    <!-- Flow 2: Create Order Endpoint -->
+    <flow name="createOrderFlow" doc:name="createOrderFlow">
+        <http:listener doc:name="POST /orders" config-ref="HTTP_Listener_config" path="/orders" allowedMethods="POST">
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[{"Content-Type": "application/json"}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        
+        <!-- Validate required fields -->
+        <ee:transform doc:name="Validate and Store Payload">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+            </ee:message>
+            <ee:variables>
+                <ee:set-variable variableName="orderPayload"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+        
+        <!-- Check orderId -->
+        <choice doc:name="Validate orderId">
+            <when expression="#[vars.orderPayload.orderId == null or isEmpty(vars.orderPayload.orderId)]">
+                <raise-error doc:name="Missing orderId" type="APP:BAD_REQUEST" description="Missing required field: orderId" />
+            </when>
+        </choice>
+        
+        <!-- Check customerId -->
+        <choice doc:name="Validate customerId">
+            <when expression="#[vars.orderPayload.customerId == null or isEmpty(vars.orderPayload.customerId)]">
+                <raise-error doc:name="Missing customerId" type="APP:BAD_REQUEST" description="Missing required field: customerId" />
+            </when>
+        </choice>
+        
+        <!-- Check amount -->
+        <choice doc:name="Validate amount">
+            <when expression="#[vars.orderPayload.amount == null]">
+                <raise-error doc:name="Missing amount" type="APP:BAD_REQUEST" description="Missing required field: amount" />
+            </when>
+        </choice>
+        
+        <!-- Make HTTP Request to httpbin.org -->
+        <http:request doc:name="POST to httpbin" config-ref="HTTP_Request_config" method="POST" path="/post">
+            <http:body><![CDATA[#[vars.orderPayload]]]></http:body>
+            <http:headers><![CDATA[#[{"Content-Type": "application/json"}]]]></http:headers>
+        </http:request>
+        
+        <!-- Error Handler -->
+        <error-handler>
+            <on-error-continue doc:name="On Error Continue - BAD_REQUEST" type="APP:BAD_REQUEST" enableNotifications="true" logException="true">
+                <set-variable doc:name="Set HTTP Status" variableName="httpStatus" value="400" />
+                <ee:transform doc:name="Bad Request Response">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    error: "BAD_REQUEST",
+    message: error.description
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </on-error-continue>
+            <on-error-continue doc:name="On Error Continue - ANY" type="ANY" enableNotifications="true" logException="true">
+                <set-variable doc:name="Set HTTP Status" variableName="httpStatus" value="500" />
+                <ee:transform doc:name="Error Response">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    error: "INTERNAL_SERVER_ERROR",
+    message: error.description default "An unexpected error occurred"
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <!-- Flow 3: Get Order Endpoint -->
+    <flow name="getOrderFlow" doc:name="getOrderFlow">
+        <http:listener doc:name="GET /orders/{orderId}" config-ref="HTTP_Listener_config" path="/orders/{orderId}" allowedMethods="GET" />
+        <ee:transform doc:name="Order Response">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    orderId: attributes.uriParams.orderId,
+    customerId: "CUST-001",
+    amount: 100.00,
+    status: "PENDING"
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+
+</mule>
