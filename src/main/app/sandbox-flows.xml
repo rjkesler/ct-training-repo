@@ -140,4 +140,15 @@ output application/json
         </ee:transform>
     </flow>
 
+    <!-- Reusable Subflow: Validate URI Parameter -->
+    <!-- Usage: Set vars.paramName before calling this subflow -->
+    <!-- Example: <set-variable variableName="paramName" value="orderId" /> -->
+    <!--         <flow-ref name="validate-uri-param-subflow" /> -->
+    <sub-flow name="validate-uri-param-subflow" doc:name="validate-uri-param-subflow">
+        <choice doc:name="Check URI Parameter">
+            <when expression="#[attributes.uriParams[vars.paramName] == null or isEmpty(trim(attributes.uriParams[vars.paramName] default ''))]">
+                <raise-error doc:name="Invalid URI Parameter" type="APIKIT:BAD_REQUEST" description="#['URI parameter \'' ++ vars.paramName ++ '\' is required and cannot be blank']" />
+            </when>
+        </choice>
+    </sub-flow>
 </mule>
